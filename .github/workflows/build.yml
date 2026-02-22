@@ -33,7 +33,7 @@ on:
 
 jobs:
   build-macos-image:
-    runs-on: macos-15-intel
+    runs-on: macos-26
     timeout-minutes: 80
 
     steps:
@@ -55,11 +55,18 @@ jobs:
         id: create_image
         continue-on-error: true
         run: |
-          if [ "${{ github.event.inputs.image_format }}" == "iso" ]; then
-            sudo bash mkmaciso "${{ github.event.inputs.macos_version }}" iso
+          TARGET_VERSION="${{ github.event.inputs.macos_version }}"
+          TARGET_FORMAT="${{ github.event.inputs.image_format }}"
+
+          if [ "$TARGET_VERSION" == "Tahoe" ]; then
+            TARGET_VERSION="26"
+          fi
+
+          sudo bash mkmaciso "$TARGET_VERSION" "$TARGET_FORMAT"
+
+          if [ "$TARGET_FORMAT" == "iso" ]; then
             echo "image_name=$(basename *.iso)" >> $GITHUB_OUTPUT
           else
-            sudo bash mkmaciso "${{ github.event.inputs.macos_version }}" dmg
             echo "image_name=$(basename *.dmg.img)" >> $GITHUB_OUTPUT
           fi
 

@@ -45,6 +45,7 @@ SIERRA_URL="http://updates-http.cdn-apple.com/2019/cert/061-39476-20191023-48f36
 CATALINA_BASE_URL="https://swcdn.apple.com/content/downloads/26/37/001-68446/r1dbqtmf3mtpikjnd04cq31p4jk91dceh8/"
 MOJAVE_BASE_URL="https://swcdn.apple.com/content/downloads/17/32/061-26589-A_8GJTCGY9PC/25fhcu905eta7wau7aoafu8rvdm7k1j4el/"
 HIGH_SIERRA_BASE_URL="https://swcdn.apple.com/content/downloads/06/50/041-91758-A_M8T44LH2AW/b5r4og05fhbgatve4agwy4kgkzv07mdid9/"
+TAHOE_26_4_BETA_INSTALL_ASSISTANT_URL="https://swcdn.apple.com/content/downloads/06/63/047-01208-A_J3XEK7LLH9/sr0z5l26rpsvur2gim4d5z1ry8kmd4r2cc/InstallAssistant.pkg"
 
 # Default parameters
 VERSION="${1:-}"
@@ -260,6 +261,36 @@ get_installer_app_name() {
             echo ""
             ;;
     esac
+}
+
+get_installer_path() {
+    local version_num="$1"
+    local default_installer_path="/Applications/$(get_installer_app_name "$version_num").app"
+
+    if [ -d "$default_installer_path" ]; then
+        echo "$default_installer_path"
+        return 0
+    fi
+
+    if [ "$version_num" = "26" ]; then
+        local tahoe_beta_path
+        tahoe_beta_path=$(find /Applications -maxdepth 1 -type d -name "Install macOS Tahoe*beta*.app" | head -1)
+
+        if [ -n "$tahoe_beta_path" ]; then
+            echo "$tahoe_beta_path"
+            return 0
+        fi
+
+        local tahoe_path
+        tahoe_path=$(find /Applications -maxdepth 1 -type d -name "Install macOS Tahoe*.app" | head -1)
+
+        if [ -n "$tahoe_path" ]; then
+            echo "$tahoe_path"
+            return 0
+        fi
+    fi
+
+    echo "$default_installer_path"
 }
 
 # ==========================
@@ -802,6 +833,19 @@ download_modern_macos() {
     local version_num="$1"
     version_name=$(get_codename $version_num)
     version_name="${version_name/_/ }"
+
+    if [ "$version_num" = "26" ]; then
+        local tahoe_pkg_path="$WORK_DIR/InstallAssistant.pkg"
+
+        log_info "Downloading macOS Tahoe 26.4 beta InstallAssistant.pkg from Apple CDN..."
+        curl -fL --retry 5 --retry-delay 5 --retry-all-errors \
+            -o "$tahoe_pkg_path" \
+            "$TAHOE_26_4_BETA_INSTALL_ASSISTANT_URL"
+
+        log_info "Installing macOS Tahoe 26.4 beta installer package..."
+        sudo installer -pkg "$tahoe_pkg_path" -target /
+        return 0
+    fi
     
     # Use direct download when softwareupdate is not available
     if [[ "$version_num" =~ ^10\.1[345]$ ]]; then
@@ -1378,7 +1422,7 @@ main() {
     echo ""
     
     # Check if installer already exists
-    INSTALLER_PATH=$(echo /Applications/$(get_installer_app_name "$VERSION_NUM").app)
+    INSTALLER_PATH=$(get_installer_path "$VERSION_NUM")
     
     if [ -n "$INSTALLER_PATH" ] && [ -d "$INSTALLER_PATH" ]; then
         log_info "Found existing installer at:${CYAN} $INSTALLER_PATH ${NC}"
@@ -1396,6 +1440,8 @@ main() {
             download_modern_macos "$VERSION_NUM" || exit 1
         fi
         
+        INSTALLER_PATH=$(get_installer_path "$VERSION_NUM")
+
         if [ ! -d "$INSTALLER_PATH" ]; then
             log_error "Failed to install macOS installer app"
             exit 1
