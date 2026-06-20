@@ -8,7 +8,7 @@
 # Goals:
 #   - Use only macOS built-in tools and commands.
 #   - Download macOS installers exclusively from official Apple sources.
-#   - Support macOS 10.7 Lion through macOS 26 Tahoe installers.
+#   - Support macOS 10.7 Lion through macOS 27 Golden Gate installers.
 #   - Produce the smallest possible installer images for both formats.
 #   - The image must be usable on Windows and Linux.
 #
@@ -45,6 +45,9 @@ SIERRA_URL="http://updates-http.cdn-apple.com/2019/cert/061-39476-20191023-48f36
 CATALINA_BASE_URL="https://swcdn.apple.com/content/downloads/26/37/001-68446/r1dbqtmf3mtpikjnd04cq31p4jk91dceh8/"
 MOJAVE_BASE_URL="https://swcdn.apple.com/content/downloads/17/32/061-26589-A_8GJTCGY9PC/25fhcu905eta7wau7aoafu8rvdm7k1j4el/"
 HIGH_SIERRA_BASE_URL="https://swcdn.apple.com/content/downloads/06/50/041-91758-A_M8T44LH2AW/b5r4og05fhbgatve4agwy4kgkzv07mdid9/"
+
+# Official Apple direct download URL for macOS 27.0 Golden Gate beta InstallAssistant.pkg
+GOLDEN_GATE_INSTALL_ASSISTANT_URL="https://swcdn.apple.com/content/downloads/57/01/140-17224-A_P1A9GDNMB4/u67ywguno7fkwggtvtzizznb1eimpgqy5k/InstallAssistant.pkg"
 
 # Default parameters
 VERSION="${1:-}"
@@ -186,6 +189,7 @@ get_version_number() {
         "sonoma") echo "14" ;;
         "sequoia") echo "15" ;;
         "tahoe") echo "26" ;;
+        "goldengate") echo "27" ;;
         *) echo "" ;;
     esac
 }
@@ -209,6 +213,7 @@ get_codename() {
         "14") echo "Sonoma" ;;
         "15") echo "Sequoia" ;;
         "26") echo "Tahoe" ;;
+        "27") echo "Golden_Gate" ;;
         *) echo "" ;;
     esac
 }
@@ -263,10 +268,37 @@ get_installer_app_name() {
         "26")
             echo "Install macOS Tahoe"
             ;;
+        "27")
+            echo "Install macOS Golden Gate beta"
+            ;;
         *)
             echo ""
             ;;
     esac
+}
+
+find_installer_app_path() {
+    local version_num
+    version_num="$1"
+    local installer_name
+    installer_name=$(get_installer_app_name "$version_num")
+
+    if [ -n "$installer_name" ] && [ -d "/Applications/${installer_name}.app" ]; then
+        echo "/Applications/${installer_name}.app"
+        return 0
+    fi
+
+    if [ "$version_num" = "27" ]; then
+        local candidate
+        for candidate in /Applications/Install\ macOS\ Golden\ Gate*.app /Applications/Install\ macOS*Beta*.app /Applications/Install\ macOS*beta*.app; do
+            if [ -d "$candidate" ]; then
+                echo "$candidate"
+                return 0
+            fi
+        done
+    fi
+
+    echo "/Applications/${installer_name}.app"
 }
 
 # ==========================
@@ -305,6 +337,7 @@ declare -a MACOS_VERSIONS=(
     "14|Sonoma|2023"
     "15|Sequoia|2024"
     "26|Tahoe|2025"
+    "27|Golden Gate beta|2026"
 )
 
 show_version_menu() {
@@ -345,7 +378,7 @@ show_version_menu() {
     echo ""
     print_separator
     echo ""
-    echo -e "  ${YELLOW}Default: 16 (Tahoe - latest)${NC}"
+    echo -e "  ${YELLOW}Default: 17 (Golden Gate beta - latest)${NC}"
     echo ""
     echo -n "  Enter your choice [2-$((total+1))] or press Enter for default: "
 }
@@ -456,9 +489,9 @@ run_interactive_menu() {
         show_version_menu
         read -r choice
         
-        # Default to Tahoe
+        # Default to Golden Gate beta
         if [ -z "$choice" ]; then
-            choice=16
+            choice=17
         fi
         
         # Validate input
@@ -846,6 +879,17 @@ direct_download_10_13_10_15() {
     return 0
 }
 
+download_golden_gate_beta() {
+    local pkg_path
+    pkg_path="$WORK_DIR/InstallAssistant.pkg"
+
+    log_info "Downloading macOS Golden Gate 27.0 beta InstallAssistant.pkg from Apple..."
+    curl --retry 5 --max-time 1800 --connect-timeout 10 --progress-bar -L "$GOLDEN_GATE_INSTALL_ASSISTANT_URL" -o "$pkg_path"
+
+    log_info "Installing macOS Golden Gate 27.0 beta installer app..."
+    sudo installer -pkg "$pkg_path" -target /
+}
+
 download_modern_macos() {
     local version_num
     version_num="$1"
@@ -903,6 +947,11 @@ download_modern_macos() {
         log_warn "╚═════════════════════════════════════════════════════════════════╝"
     fi
     
+    if [ "$version_num" = "27" ]; then
+        download_golden_gate_beta
+        return $?
+    fi
+
     log_info "Fetching available macOS installers..."
     softwareupdate --list-full-installers 2>/dev/null | grep "* Title:" | sed 's/^[[:space:]]*//' > "$WORK_DIR/installers.txt"
     
@@ -1430,8 +1479,8 @@ main() {
         log_info "Run with -h or --help for usage"
         echo ""
         log_error "Unknown macOS version: $VERSION"
-        log_info "Supported versions: 10.7, 10.8, 10.9, 10.10, 10.11, 10.12, 10.13, 10.14, 10.15, 11, 12, 13, 14, 15, 26"
-        log_info "Supported codenames: lion, mountain-lion, mavericks, yosemite, el-capitan, sierra, high-sierra, mojave, catalina, big-sur, monterey, ventura, sonoma, sequoia, tahoe"
+        log_info "Supported versions: 10.7, 10.8, 10.9, 10.10, 10.11, 10.12, 10.13, 10.14, 10.15, 11, 12, 13, 14, 15, 26, 27"
+        log_info "Supported codenames: lion, mountain-lion, mavericks, yosemite, el-capitan, sierra, high-sierra, mojave, catalina, big-sur, monterey, ventura, sonoma, sequoia, tahoe, golden-gate"
         exit 1
     fi
     
@@ -1462,7 +1511,7 @@ main() {
     echo ""
     
     # Check if installer already exists
-    INSTALLER_PATH="/Applications/$(get_installer_app_name "$VERSION_NUM").app"
+    INSTALLER_PATH=$(find_installer_app_path "$VERSION_NUM")
     
     if [ -n "$INSTALLER_PATH" ] && [ -d "$INSTALLER_PATH" ]; then
         log_info "Found existing installer at:${CYAN} $INSTALLER_PATH ${NC}"
@@ -1480,6 +1529,7 @@ main() {
             download_modern_macos "$VERSION_NUM" || exit 1
         fi
         
+        INSTALLER_PATH=$(find_installer_app_path "$VERSION_NUM")
         if [ ! -d "$INSTALLER_PATH" ]; then
             log_error "Failed to install macOS installer app"
             exit 1
@@ -1487,7 +1537,7 @@ main() {
     fi
     
     # Get volume name for the installer
-    VOLUME_NAME=$(get_installer_app_name "$VERSION_NUM")
+    VOLUME_NAME=$(basename "$INSTALLER_PATH" .app)
     
     if [ "$IMAGE_FORMAT" == "iso" ]; then
         case "$VERSION_NUM" in
@@ -1561,7 +1611,7 @@ Usage:
   mkmaciso                                     # Interactive mode
 
 Parameters:
-  VERSION         macOS version number or codename, e.g. 26 or Tahoe
+  VERSION         macOS version number or codename, e.g. 27 or Golden Gate
   FORMAT          iso or dmg (default: iso)
   OUTPUT_PATH     Output file path (default: ./macOS_<version>.<format>)
 
@@ -1574,6 +1624,7 @@ Supported versions:
   10.12 Sierra           14     Sonoma
   10.13 High Sierra      15     Sequoia
                          26     Tahoe
+                         27     Golden Gate beta
 
 Examples:
   mkmaciso                              Interactive mode
@@ -1598,9 +1649,9 @@ if [ $# -eq 0 ]; then
         log_error "Interactive mode unavailable when piped"
         log_info "Usage: curl -sL <URL> | bash -s <VERSION> [FORMAT] [OUTPUT]"
         echo ""
-        log_info "Example: curl -sL <URL> | bash -s 26"
-        log_info "Example: curl -sL <URL> | bash -s 26 dmg"
-        log_info "Example: curl -sL <URL> | bash -s 26 iso ~/Desktop/Tahoe.iso"
+        log_info "Example: curl -sL <URL> | bash -s 27"
+        log_info "Example: curl -sL <URL> | bash -s 27 dmg"
+        log_info "Example: curl -sL <URL> | bash -s 27 iso ~/Desktop/Golden_Gate.iso"
         exit 1
     fi
     run_interactive_menu
